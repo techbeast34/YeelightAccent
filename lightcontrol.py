@@ -7,7 +7,7 @@ from time import sleep
 from mss import mss
 from colorthief import ColorThief
 
-
+bulb_pwr_status = 0
 
 def discoverBulbs():
     mcast_grp = ('239.255.255.250', 1982) #multicast address
@@ -19,8 +19,9 @@ def discoverBulbs():
     ttl = struct.pack('b', 1) #set ttl value so that we don't go outside the local network
     sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
     
-    expression = re.compile("yeelight://.*")
-        
+    ip_expression = re.compile("yeelight://.*")
+
+    
     data = None
     server = None
     
@@ -34,8 +35,8 @@ def discoverBulbs():
         sock.close()
         if data is None:
             return("No bulbs found")
-        led_ip_match = expression.findall(response)
-
+        led_ip_match = ip_expression.findall(response)
+        
         led_ip = led_ip_match.pop()
 
         led_ip = led_ip.replace("yeelight://", "")
@@ -48,13 +49,20 @@ def discoverBulbs():
 
 def control(led_ip, led_port, r, g, b, time):
     color = (r * 65536) + (g * 256) + b
-    msg = "{\"id\": 1, \"method\": \"set_rgb\", \"params\":[%d, \"smooth\", %d]}\r\n" % (color, time)
     
-    bytes_msg = msg.encode()
+    set_rgb_msg = "{\"id\": 1, \"method\": \"set_rgb\", \"params\":[%d, \"smooth\", %d]}\r\n" % (color, time)
+    pwr_on_msg = b"{\"id\": 1, \"method\": \"set_power\", \"params\":[\"on\", \"smooth\", 5000]}\r\n"
+    
+    bytes_msg = set_rgb_msg.encode()
     
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     
     sock.connect((led_ip, led_port))
+    
+    if(bulb_pwr_status == 0):
+        sock.send(pwr_on_msg)
+    
+    
     sock.send(bytes_msg)
     #print(sock.recv(1024).decode())
     sock.close()
@@ -80,11 +88,36 @@ def ambient():
         return(palette[1])
 
 
+def get_power_status(led_ip, led_port):
+    get_pwr_prop_msg = b"{\"id\": 1, \"method\": \"get_prop\", \"params\":[\"power\"]}\r\n"
+    
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.connect((led_ip, led_port))
+    sock.send(get_pwr_prop_msg)
+    
+    status = sock.recv(256).decode()
+    #print(status)
+    power_expression = re.compile("[fn]")
+    #matches for characters f and n
+    #luckily the response doesn't include those characters elsewhere
+    
+    pwr_status_find = power_expression.findall(status)
+    #print(pwr_status_find)
+    pwr_status = pwr_status_find[0].strip() 
+    #character is either going to be f or n, so we only need to check that
+    if(pwr_status == "n"):
+        bulb_pwr_status = 1
+    else:
+        bulb_pwr_status = 0
+    
+    
 
 bulbs = discoverBulbs()
 
 
+
 while True:
+    get_power_status(bulbs[0].encode(), int(bulbs[1]))
     accentColor = ambient()
     red = -1
     green = -1
@@ -141,7 +174,7 @@ while True:
     time = 10000
     control(bulbs[0].encode(), int(bulbs[1]), red, green, blue, time)
     os.remove("screen.png")
-    #print("Executing, sleeping for 5 min")
+    print("Executing, setting LEDs to color: (", red, green, blue, ")")
     sleep(300) #sleep for 5 min
     
 
