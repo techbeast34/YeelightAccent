@@ -19,8 +19,8 @@ def discoverBulbs():
     ttl = struct.pack('b', 1) #set ttl value so that we don't go outside the local network
     sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
     
-    expression = re.compile("yeelight://.................")
-    
+    expression = re.compile("yeelight://.*")
+        
     data = None
     server = None
     
@@ -59,7 +59,7 @@ def control(led_ip, led_port, r, g, b, time):
     #print(sock.recv(1024).decode())
     sock.close()
 
-def get_ip(): #thanks stackoverflow, this is the only one that works the way I want it
+def get_ip(): #thanks stackoverflow, this is the only function that works the way I want it
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         # doesn't even have to be reachable
@@ -75,8 +75,8 @@ def ambient():
     with mss() as sct:
         filename = sct.shot(mon=-1, output='screen.png')
         color_thief = ColorThief('screen.png')
-        dominant_color = color_thief.get_color(quality=1)
-        palette = color_thief.get_palette(color_count=3)
+        palette = color_thief.get_palette(color_count=2, quality=3)
+        #print(palette)
         return(palette[1])
 
 
@@ -86,20 +86,64 @@ bulbs = discoverBulbs()
 
 while True:
     accentColor = ambient()
-    red = accentColor[0]
-    green = accentColor[1]
-    blue = accentColor[2]
+    red = -1
+    green = -1
+    blue = -1
+    
+    if((accentColor[0] > accentColor[1]) and (accentColor[0] > accentColor[2])):
+        
+        red = accentColor[0] #reduce other colors to amplify dominant color
+        
+        if(accentColor[1] >= accentColor[2]):
+            green = (accentColor[1] - 96)
+            blue = (accentColor[2] - 191)
+        else:
+            green = (accentColor[1] - 96)
+            blue = (accentColor[2] - 191)
+    elif((accentColor[1] > accentColor[0]) and (accentColor[1] > accentColor[2])):
+        
+        green = accentColor[1] #do the same as above 
+        
+        if(accentColor[0] >= accentColor[2]):
+            red = (accentColor[0] - 96)
+            blue = (accentColor[2] - 191)
+        else:
+            red = (accentColor[0] - 191)
+            blue = (accentColor[2] - 96)
+    elif((accentColor[2] > accentColor[0]) and (accentColor[2] > accentColor[1])):
+        
+        blue = accentColor[2] #you get the idea
+        
+        if(accentColor[0] >= accentColor[1]):
+            red = (accentColor[0] - 96)
+            green = (accentColor[1] - 191)
+        else:
+            red = (accentColor[1] - 191)
+            green = (accentColor[2] - 96)
+    
+    #The amplifying algorithm seems to favor red, although that may just be
+    #colorthief being biased towards red, not sure exactly why but if I 
+    #keep blue as an "accent" by using a color picker in a web browser, it
+    #just favors red more. Even majority blue on one screen and black/grey
+    #on others makes the color purple-ish, but it works better than before
+    
+    if(red < 0):
+        red = 0
+    if(green < 0):
+        green = 0
+    if(blue < 0):
+        blue = 0
+    
+    #print(red)
+    #print(green)
+    #print(blue)
+    
     time = 10000
     control(bulbs[0].encode(), int(bulbs[1]), red, green, blue, time)
     os.remove("screen.png")
-    print("Executing, sleeping for 10 min")
-    sleep(600) #sleep for 10 min
+    #print("Executing, sleeping for 5 min")
+    sleep(300) #sleep for 5 min
     
-
-
-#print(accentColor[0])
-#print(accentColor[1])
-#print(accentColor[2])
 
 #red = int(input("Enter in a red value(0-255): "))
 #green = int(input("Enter in a green value(0-255): "))
